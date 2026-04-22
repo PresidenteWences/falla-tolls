@@ -1,0 +1,88 @@
+import streamlit as st
+import pandas as pd
+import io
+
+st.set_page_config(page_title="Falla Els Tolls - Control Cuotas", layout="wide")
+
+# --- CONFIGURACIÓN DE TARIFAS ---
+PRECIOS = {
+    "Adulto": 30.0,
+    "Corte": 25.0,
+    "Jubilado": 25.0,
+    "Niño": 20.0
+}
+
+# --- CENSO DE LA COMISIÓN ---
+lista_falleros = [
+    ["Wenceslao Peris", "Adulto"], ["Mati Vega Tinoco", "Adulto"], ["Juan Manuel Pastor", "Adulto"],
+    ["Carolina Ortiz", "Adulto"], ["Pepi Soler", "Adulto"], ["Paco López", "Adulto"],
+    ["Antonio León", "Adulto"], ["Mª Angeles Espinosa", "Adulto"], ["Alberto López", "Adulto"],
+    ["Carmen Piqueras", "Adulto"], ["Mª Carmen Soto", "Jubilado"], ["Angelita Serrano", "Adulto"],
+    ["Mari Aguilar", "Jubilado"], ["Isa Molina", "Adulto"], ["Angel Brazales", "Adulto"],
+    ["Carlos D. Pastor", "Adulto"], ["Jesús Mata", "Adulto"], ["Oscar Tomás", "Adulto"],
+    ["Alicia Alcántara", "Corte"], ["Esther", "Adulto"], ["Henar", "Adulto"],
+    ["Adrian Osorio", "Adulto"], ["Paula Osorio", "Corte"], ["Majo", "Adulto"],
+    ["Patricia Santiago", "Adulto"], ["Lorena", "Adulto"], ["Daniel Masip", "Adulto"],
+    ["José Alcántara", "Adulto"], ["Beatriz Romero", "Adulto"], ["Alicia Araix", "Adulto"],
+    ["Inma Mateu", "Adulto"], ["Matilde Tinoco", "Jubilado"], ["Manuel Gallardo", "Adulto"],
+    ["Trini Fuster", "Adulto"], ["Noemí Alcántara", "Corte"], ["Lucia D. Vega", "Corte"],
+    ["Pilar Arroyo", "Corte"], ["Teresa Peris", "Corte"], ["Avelino", "Adulto"],
+    ["Carmelo", "Adulto"], ["Patricia Ocaña", "Adulto"], ["Aida", "Adulto"],
+    ["Teresa Castelar", "Adulto"], ["Roberto Dominguez", "Adulto"], ["Cristian Cortés", "Adulto"],
+    ["Adrian Dominguez", "Adulto"], ["Paco Soler", "Jubilado"], ["David Brazales", "Niño"],
+    ["Selena Cortés", "Corte"], ["Nadia Leon", "Corte"], ["Aitana Ballester", "Corte"],
+    ["Lucas Brazales", "Niño"], ["Diego Dominguez", "Niño"], ["Manuela Espino", "Niño"],
+    ["Teresa Espino", "Niño"], ["Lucas Pastor", "Niño"], ["Zahara Rivera", "Niño"],
+    ["Alejandra Tomas", "Niño"]
+]
+
+# --- INICIALIZACIÓN DE DATOS ---
+if 'df_cuotas' not in st.session_state:
+    meses = ["Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre", "Enero", "Febrero", "Marzo"]
+    df_inicial = pd.DataFrame(lista_falleros, columns=["Fallero", "Categoría"])
+    for m in meses:
+        df_inicial[m] = False
+    st.session_state.df_cuotas = df_inicial
+
+def calcular_totales(df):
+    meses = ["Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre", "Enero", "Febrero", "Marzo"]
+    def fila_total(row):
+        precio = PRECIOS.get(row['Categoría'], 0.0)
+        return sum(row[meses]) * precio
+    df['Total Pagado (€)'] = df.apply(fila_total, axis=1)
+    return df
+
+st.title("🏮 Cuotas Falla Els Tolls")
+
+menu = ["🏠 Ver Mis Pagos", "⚙️ Admin (Tesorero)"]
+choice = st.sidebar.selectbox("Menú", menu)
+
+if choice == "🏠 Ver Mis Pagos":
+    st.subheader("Estado General de la Comisión")
+    df_ver = calcular_totales(st.session_state.df_cuotas.copy())
+    st.dataframe(df_ver, use_container_width=True, hide_index=True)
+    st.sidebar.metric("Caja Total", f"{df_ver['Total Pagado (€)'].sum()} €")
+
+elif choice == "⚙️ Admin (Tesorero)":
+    pwd = st.sidebar.text_input("Contraseña", type="password")
+    if pwd == "tolls2025": # <--- ESTA ES TU CLAVE
+        st.subheader("Panel de Edición de Pagos")
+        edited_df = st.data_editor(
+            st.session_state.df_cuotas, 
+            num_rows="dynamic", 
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Categoría": st.column_config.SelectboxColumn(options=list(PRECIOS.keys()))
+            }
+        )
+        if st.button("Guardar Cambios"):
+            st.session_state.df_cuotas = edited_df
+            st.success("¡Datos guardados!")
+        
+        # Exportar Excel
+        df_ex = calcular_totales(edited_df.copy())
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df_ex.to_excel(writer, index=False, sheet_name='Pagos')
+        st.download_button("📥 Descargar Excel", data=output.getvalue(), file_name="cuotas_els_tolls.xlsx")
